@@ -7,11 +7,21 @@ import itertools
 import pandas as pd
 import numpy as np
 import math 
+import scipy
 
 
-from more_itertools import ichunked, distinct_combinations
+def construct_batches(n,k,batch_size):
+    combinations_slices = []
+    # Calculate number of batches
+    n_batches = math.ceil(scipy.special.comb(n,k,exact=True)/batch_size)
 
+    # Construct iterator for combinations
+    combinations = itertools.combinations(range(n),k)
 
+    while len(combinations_slices) < n_batches:
+        combinations_slices.append(itertools.islice(combinations,batch_size))
+
+    return combinations_slices
 
 @jit
 def vmap_batched_o_info(x, comb):
@@ -72,7 +82,7 @@ def combinations(n, k, groups=None):
             yield i
 
 def exhaustive_loop_zerolag(ts, maxsize=5, n_best=10, groups=None, n_jobs=-1,
-                            n_boots=None, alpha=0.05):
+                            n_boots=None, alpha=0.05, batch_size = 10000):
     """Simple implementation of the Oinfo.
 
     Parameters
@@ -91,20 +101,23 @@ def exhaustive_loop_zerolag(ts, maxsize=5, n_best=10, groups=None, n_jobs=-1,
         maxsize = nvars
     maxsize = max(1, maxsize)
 
-    all_comb = jnp.array(list(distinct_combinations(jnp.arange(nvars), maxsize)))
-  
-    total_x = jnp.array([x[comb, :] for comb in all_comb])
 
-    #starting_time = timeit.default_timer()
-    outs = vmap_batched_o_info(total_x, all_comb)
-
-    oinfo, combs = outs
-
+    oinfo, combs = [], []
+    combinations_slices = construct_batches(nvars,maxsize,batch_size)
+    for s in combinations_slices:
+        #print(list(s))
+        all_comb = jnp.array(list(s))
+        total_x = jnp.array([x[comb, :] for comb in all_comb])
+        outs = vmap_batched_o_info(total_x, all_comb)
+        slice_oinfo, slice_combs = outs
+        oinfo.extend(slice_oinfo)
+        combs.extend(slice_combs)
+      
     # dataframe conversion
     df = pd.DataFrame({
         'Combination': [tuple(x) for x in combs],
         'Oinfo': oinfo,
-        #'Size': [len(c) for c in combs]
+        'Size': [len(c) for c in combs]
     })
     df.sort_values('Oinfo', inplace=True, ascending=False)
     

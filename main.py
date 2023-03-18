@@ -26,8 +26,6 @@ ts = mat['data'][:, :].T
 
 starting_time = timeit.default_timer()
 
-df = exhaustive_loop_zerolag(ts, maxsize=4, n_jobs=-1, n_boots=0,
-                                 n_best=20, groups=4)
-
+df = exhaustive_loop_zerolag(ts = ts, maxsize=4, batch_size = 100000)
 print("Time difference :", timeit.default_timer() - starting_time)
 
